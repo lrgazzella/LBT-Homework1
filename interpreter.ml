@@ -9,17 +9,17 @@ let emptyenv (v : 't) = function x -> v;;
 let applyenv (r : 't env) (i : ide) = r i;;
 let bind (r : 't env) (i : ide) (v : 't) = function x -> if x = i then v else applyenv r x;;
 
-type permission = (* La execution corrente può: *)
-  | PMemory    (* usare la memoria dell'esecuzione padre *)
-  | PWrite     (* scrivere su file *)
-  | PRead      (* leggere da file *)
-  | PSend      (* Inviare un espressione su rete *)
-  | PReceive;; (* ricevere un valore dalla rete *)
+type permission = (* The current execution can: *)
+  | PMemory    (* Use the memory of the parent execution *)
+  | PWrite     (* Write on a file *)
+  | PRead      (* Read from a file *)
+  | PSend      (* Send the result of an expression to an address *)
+  | PReceive;; (* Receive a value from an address *)
 
 type exp =  
   | Eint of int
   | Ebool of bool
-  | Var of ide (* Fa una lookup tra tutte le variabili nell'ambiente. Nota che le variabili sono state aggiunte dal let *)
+  | Var of ide 
   | BinOp of string * exp * exp
   | UnOp of string * exp
   | If of exp * exp * exp
@@ -27,23 +27,20 @@ type exp =
   | Fun of ide * exp
   | FunCall of exp * arg
   | Letrec of ide * exp * exp
-  | Execute of exp * permission list (* todo: ha senso permettere una execute dentro un'altra execute? *)
-  | Send of string * exp (* invia all'indirizzo un'espressione  *)
-  | Receive of string * int (* riceve dall'indirizzo un intero *)
-  | Write of string * exp
-  | Read of string * int (* leggo dal file un intero*)
+  | Execute of exp * permission list
+  | Send of string * exp (* the string represents an address *)
+  | Receive of string * int (* the string represents an address *)
+  | Write of string * exp (* the string represents a path *)
+  | Read of string * int (* the string represents a path *)
     and evT = 
+      | Unbound
       | Int of int
       | Bool of bool
-      | Unbound
       | FunVal of ide * exp * evT env
       | RecFunVal of ide * (ide * exp * evT env)
-    and arg = Exp of exp | EvT of evT;; (* Tipo utilizzato nella FunCall per distinguere il caso di chiamata di funzione con valore o con espresione *)
+    and arg = Exp of exp | EvT of evT;; 
 
-       
-
-
-(* Definizione type checker *)
+(* type checker *)
 let typecheck (s : string) (v : evT) : bool = match s with
 	"int" -> (match v with
 		Int(_) -> true |
@@ -51,9 +48,9 @@ let typecheck (s : string) (v : evT) : bool = match s with
 	"bool" -> (match v with
 		Bool(_) -> true |
 		_ -> false) |
-	_ -> failwith("not a valid type");;
+	_ -> failwith("Not a valid type");;
 
-(*Definizione funzioni primitive*)
+(* primitive functions *)
 let prod_ x y = if (typecheck "int" x) && (typecheck "int" y)
 	then (match (x,y) with 
     | (Int(n),Int(u)) -> Int(n*u)
@@ -101,22 +98,17 @@ let not_ x = if (typecheck "bool" x)
     | _ -> failwith("error"))
 	else failwith("Type error");;
 
-(* The element v is in the list xs*)
-let rec exists v xs = match xs with
-  | [] -> false 
-  | x::xs -> if x=v then true else exists v xs;;
 
 (* ys is included in xs *)
 let rec includes xs ys = match ys with
   | [] -> true
-  | y::yss -> (exists y xs) && includes xs yss 
+  | y::yss -> (List.mem y xs) && includes xs yss 
 
-
-let can_read p = exists PRead p;;
-let can_write p = exists PWrite p;;
-let can_send p = exists PSend p;;
-let can_receive p = exists PReceive p;;
-let can_memory p = exists PMemory p;;
+let can_read p = List.mem PRead p;;
+let can_write p = List.mem PWrite p;;
+let can_send p = List.mem PSend p;;
+let can_receive p = List.mem PReceive p;;
+let can_memory p = List.mem PMemory p;;
 
 
 let rec eval (e : exp) (r : evT env) (p: permission list): evT = 
@@ -187,12 +179,8 @@ let rec eval (e : exp) (r : evT env) (p: permission list): evT =
         failwith("The inner execution cannot have more permission than the outer");;
 
         
-
-
 (* =============================  TESTS  ============================= *)
-
-
-let rec printConvert (v: evT) = match v with (* Funzione di supporto per la stampa di evT *)
+let rec printConvert (v: evT) = match v with (* Support function to print evT *)
   | Int(i) -> printf "%d" i
   | Bool(b) -> printf "%b" b
   | Unbound -> printf "Unbound"
@@ -202,15 +190,26 @@ let rec printConvert (v: evT) = match v with (* Funzione di supporto per la stam
 let env0 = emptyenv Unbound;;
 let all_permission = [PMemory; PSend; PReceive; PRead; PWrite];;
 
-printf "Test \n";;
+printf "---------- Test 1 ----------\n";;
 let e1 = Execute(FunCall(Fun("x", BinOp("+", Var("x"), Eint(1))), Exp(Eint(5))), []);;
-let e2 = Let("mysum", Fun("x", Fun("y", BinOp("+", Var("x"), Var("y")))), Execute(FunCall(FunCall(Var("mysum"), Exp(Eint(5))), Exp(Eint(5))), []));;
+try printConvert (eval e1 env0 all_permission) with
+  Failure e -> printf "%s" e;;
+printf "\n";;
+
+printf "---------- Test 2 ----------\n";;
+let e2 = Let("mysum", Fun("x", Fun("y", BinOp("+", Var("x"), Var("y")))), Execute(FunCall(FunCall(Var("mysum"), Exp(Eint(5))), Exp(Eint(5))), [PMemory]));;
+try printConvert (eval e2 env0 all_permission) with
+  Failure e -> printf "%s" e;;
+printf "\n";;
+
+printf "---------- Test 3 ----------\n";;
 let e3 = Let("mypin", Eint(12345), Execute(Let("result", Var("mypin"), Send("www.unipi.it", Var("result"))), [PSend; PMemory]));;
+try printConvert (eval e3 env0 all_permission) with
+  Failure e -> printf "%s" e;;
+printf "\n";;
 
-
+printf "---------- Test 4 ----------\n";;
 let e4 = Let("x", Eint(1), Execute(Let("y", Eint(5), Execute(Write("./file.txt", BinOp("-", Var("x"), Var("y"))), [PWrite; PMemory])), [PWrite; PMemory]));;
-  
-
 try printConvert (eval e4 env0 all_permission) with
   Failure e -> printf "%s" e;;
 printf "\n";;
