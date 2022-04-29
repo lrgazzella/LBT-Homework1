@@ -139,7 +139,7 @@ let rec eval (e : exp) (r : evT env) (p: permission list): evT =
 	| Let(i, e1, e2) -> eval e2 (bind r i (eval e1 r p)) p
 	| Fun(i, a) -> FunVal(i, a, r)
 	| FunCall(f, arg) ->
-      let v = match arg with (* Si distingue il caso in cui arg sia un'espressione o un valore. Se è un espressione si valuta *)
+      let v = match arg with 
         | Exp(e1) -> eval e1 r p
         | EvT(v1) -> v1
       in let fClosure = (eval f r p) in
@@ -149,7 +149,7 @@ let rec eval (e : exp) (r : evT env) (p: permission list): evT =
               let rEnv = (bind fDecEnv g fClosure) in
                 let aEnv = (bind rEnv arg v) in
                   eval fBody aEnv p
-          | _ -> failwith("Non functional value found")) (* todo: stampare il nome della funzione *)
+          | _ -> failwith("Non functional value found")) 
   | Letrec(f, funDef, letBody) ->
     (match funDef with
       | Fun(i, fBody) -> let r1 = (bind r f (RecFunVal(f, (i, fBody, r)))) in eval letBody r1 p
@@ -160,7 +160,7 @@ let rec eval (e : exp) (r : evT env) (p: permission list): evT =
       else failwith("Permission denied -> You cannot use operation Send")
   | Receive(socket, v) -> 
     if can_receive(p)
-      then Int(v) (* è una receive fittizia, valuta solamente l'espressione *)
+      then Int(v) 
       else failwith("Permission denied -> You cannot use operation Receive")
   | Write(path, e) ->
     if can_write(p)
@@ -179,7 +179,7 @@ let rec eval (e : exp) (r : evT env) (p: permission list): evT =
         failwith("The inner execution cannot have more permission than the outer");;
 
         
-(* =============================  TESTS  ============================= *)
+(* =============================  TESTS AND EXAMPLES  ============================= *)
 let rec printConvert (v: evT) = match v with (* Support function to print evT *)
   | Int(i) -> printf "%d" i
   | Bool(b) -> printf "%b" b
@@ -209,7 +209,7 @@ try printConvert (eval e3 env0 all_permission) with
 printf "\n";;
 
 printf "---------- Test 4 ----------\n";;
-let e4 = Let("x", Eint(1), Execute(Let("y", Eint(5), Execute(Write("./file.txt", BinOp("-", Var("x"), Var("y"))), [PWrite; PMemory])), [PWrite; PMemory]));;
+let e4 = Let("x", Eint(1), Execute(Let("y", Eint(5), Execute(Write("./file.txt", BinOp("-", Var("x"), Var("y"))), [PWrite; PMemory])), [PWrite]));;
 try printConvert (eval e4 env0 all_permission) with
   Failure e -> printf "%s" e;;
 printf "\n";;
